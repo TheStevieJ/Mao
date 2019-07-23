@@ -1,7 +1,10 @@
 import csv
 import requests
+import PIL
+import tkinter as tk
 from PIL import Image
 from io import BytesIO
+from tkinter import filedialog
 
 class ImageHandler:
 	cache = []
@@ -29,71 +32,46 @@ class ImageHandler:
 	def formatNames(names):
 		outNames = []
 		for name in names:
-			if name is "" or name is "Noban":
+			if name is "":
 				outNames.append("Empty")
 			else:
 				tempName = name.replace("\'", " ").title()
 				tempName = tempName.replace(" ","")
-				tempName = tempName.replace("NoBan", "Empty")
 				outNames.append(tempName)
 		return outNames
-
-	def makeDraft(names, id, num):
-		names = ImageHandler.selectNames(names, num)
+		
+	def makeNewDraft(names, id, num):
+		order = [[[0,2,4,12,14],[1,3,5,13,15]],[[6,9,10,17,18],[7,8,11,16,19]]]
 		names = ImageHandler.formatNames(names)
 		for name in names:
 			ImageHandler.loadImage(name)
 		picks = len(names)
+		for x in range(picks, 21):
+			names.append("Empty")
 		fileNames = []
 		for name in names:
 			fileNames.append("Images/"+ name + ".png")
 		images = map(Image.open, fileNames)
-		height = len(fileNames) * 120
-		new_im = Image.new('RGB', (120, 600))
-		offset = 0
-		for img in images:
-			new_im.paste(img, (0,offset))
-			offset += 120
-		empty = Image.open("Images/Empty.png")
-		for i in range(5 - picks):
-			new_im.paste(empty, (0,offset))
-			offset += 120
+		new_im = Image.new('RGB', (660, 150))
+		yOffset = 0
+		for group in order:
+			xOffset = 0	
+			for row in group:
+				for img in row:
+					tempImg = Image.open(fileNames[img])
+					new_im.paste(tempImg.resize((60,60), PIL.Image.ANTIALIAS), (xOffset, yOffset))
+					xOffset += 60
+				xOffset += 60
+			yOffset += 90
 		location = "Images/"+str(id)+".png"
 		new_im.save(location)
 		return location
-
-	def makeBans(names, id, num):
-		names = ImageHandler.selectNames(names, num)
-		names = ImageHandler.formatNames(names)
-		for name in names:
-			ImageHandler.loadImage(name)
-		picks = len(names)
-		fileNames = []
-		for name in names:
-			fileNames.append("Images/"+ name + ".png")
-		images = map(Image.open, fileNames)
-		height = len(fileNames) * 120
-		new_im = Image.new('RGB', (600, 120))
-		offset = 0
-		for img in images:
-			new_im.paste(img, (offset,0))
-			offset += 120
-		empty = Image.open("Images/Empty.png")
-		for i in range(5 - picks):
-			new_im.paste(empty, (offset,0))
-			offset += 120
-		location = "Images/"+str(id)+".png"
-		new_im.save(location)
-		return location
-
-		def makeNewDraft(names, id, num):
 
 
 class Pick:
 	def __init__(self, name):
 		self.name = name
 		self.children = []
-		self.path = []
 
 	def isChild(self, name):
 		for child in self.children:
@@ -137,6 +115,8 @@ class Tree:
 	def addDraft(self, insturctions):
 		curNode = self.root
 		for champ in insturctions:
+			if champ is "":
+				return
 			if curNode.isChild(champ):
 				curNode = curNode.getChild(champ)
 			else:
@@ -189,9 +169,9 @@ class MindMap:
 		else:
 			link = "Images/Empty.png"
 			if depth in MindMap.blueBans or depth in MindMap.redBans:
-				link = ImageHandler.makeBans(path, self.id, self.getType(depth))
+				link = ImageHandler.makeNewDraft(path, self.id, self.getType(depth))
 			if depth in MindMap.bluePicks or depth in MindMap.redPicks:
-				link = ImageHandler.makeDraft(path, self.id, self.getType(depth))
+				link = ImageHandler.makeNewDraft(path, self.id, self.getType(depth))
 
 			if not node.emptyNest():
 				file.write("<node BACKGROUND_COLOR=\""+ backColor +"\" HGAP=\"30\" ID=\"ID_"+ str(self.id) +"\" VSHIFT = \"10\" STYLE = \"bubble\">\n")
@@ -238,7 +218,7 @@ class SimpleCSV:
 	def __init__(self, name):
 		self.topLim = 2
 		self.botLim = 14 
-		self.leftPoint = 4
+		self.leftPoint = 3
 		self.rightPoint = 24
 		self.fileName = name
 
@@ -252,20 +232,64 @@ class SimpleCSV:
 				if rowCount >= self.topLim and rowCount <= self.botLim:
 					colCount = 0
 					for entry in row:
-						if colCount is not 19 and colCount >= self.leftPoint and colCount <= self.rightPoint:
+						if colCount >= self.leftPoint and colCount <= self.rightPoint:
 							tempDraft.append(entry)
 						colCount = colCount+1
 					drafts.append(tempDraft)
 				rowCount = rowCount+1
+		for draft in drafts:
+			if draft[0] is "":
+				drafts.remove(draft)
+
 		return drafts
 
 
-myCSV = SimpleCSV("test2.csv")
-draftList = myCSV.getDrafts()
+class Application(tk.Frame):
+	def __init__(self, master=None):
+		super().__init__(master)
+		self.master = master
+		self.pack()
+		self.create_widgets()
 
-mainTree = Tree("VS SKT")
-for draft in draftList:
-	mainTree.addDraft(draft)
+	def create_widgets(self):
+		self.hi_there = tk.Button(self)
+		self.hi_there["text"] = "Load File\n(click me)"
+		self.hi_there["command"] = self.say_hi
+		self.hi_there.pack(side="top")
+		self.create_doc = tk.Button(self)
+		self.create_doc["text"] = "Load File First"
+		self.create_doc["command"] = self.errorPrint
+		self.create_doc.pack(side="top")
+		self.quit = tk.Button(self, text="QUIT", fg="red",
+								command=self.master.destroy)
+		self.quit.pack(side="bottom")
 
-mainMap = MindMap("test1")
-mainMap.generateMindMap(mainTree)
+	def say_hi(self):
+		self.filename = filedialog.askopenfilename(initialdir = "/",
+													title = "Select draft file",
+													filetypes = (("CSV Draft","*.csv"),("all files","*.*"))
+													)
+		self.hi_there["text"] = "File Found"
+		self.create_doc["text"] = "File Loaded\n(click me)"
+		self.create_doc["command"] = self.parse
+		print(self.filename)
+
+	def errorPrint(self):
+		print("No file loaded")
+
+	def parse(self):
+		myCSV = SimpleCSV(self.filename)
+		draftList = myCSV.getDrafts()
+
+		mainTree = Tree("HEAD")
+		for draft in draftList:
+			mainTree.addDraft(draft)
+
+		mainMap = MindMap("test1")
+		mainMap.generateMindMap(mainTree)
+		self.create_doc["text"] = "File Created!"
+
+
+root = tk.Tk()
+app = Application(master=root)
+app.mainloop()
